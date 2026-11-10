@@ -4,20 +4,22 @@ description: A minimal Gardener extension example that does nothing
 tags:
   - example
 resources:
-- kind: BackupBucket
-  type: example
-- kind: BackupEntry
-  type: example
-- kind: Bastion
-  type: example
-- kind: ControlPlane
-  type: example
-- kind: DNSRecord
-  type: example
-- kind: Infrastructure
-  type: example
-- kind: Worker
-  type: example
+  - kind: Extension
+    type: example
+# - kind: BackupBucket
+#   type: example
+# - kind: BackupEntry
+#   type: example
+# - kind: Bastion
+#   type: example
+# - kind: ControlPlane
+#   type: example
+# - kind: DNSRecord
+#   type: example
+# - kind: Infrastructure
+#   type: example
+# - kind: Worker
+#   type: example
 # builtWith:
 #   gardener/gardener: v1.153.0
 # testedWith:
