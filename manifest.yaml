@@ -1,0 +1,30 @@
+name: Example Extension
+version: v0.0.2
+description: A minimal Gardener extension example that does nothing
+tags:
+  - example
+resources:
+- kind: BackupBucket
+  type: example
+- kind: BackupEntry
+  type: example
+- kind: Bastion
+  type: example
+- kind: ControlPlane
+  type: example
+- kind: DNSRecord
+  type: example
+- kind: Infrastructure
+  type: example
+- kind: Worker
+  type: example
+# builtWith:
+#   gardener/gardener: v1.153.0
+# testedWith:
+#   gardener/gardener: v1.154.1
+#   kubernetesVersions:
+#   - 1.36
+#   - 1.35
+#   - 1.34
+#   - 1.33
+#   - 1.32

@@ -33,6 +33,8 @@ jobs:
       packages: write
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}
+      CHART_REPOSITORY: oci://ghcr.io/${{ github.repository_owner }}/charts
+      MANIFEST_REPOSITORY: ghcr.io/${{ github.repository_owner }}/manifests
       RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
     - uses: actions/checkout@v5
@@ -47,6 +49,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build and push extension image
+      id: image
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -70,4 +73,46 @@ jobs:
           --username "${{ github.actor }}" \
           --password-stdin
         helm push "/tmp/gardener-extension-example-${chart_version}.tgz" \
-          "oci://ghcr.io/${{ github.repository_owner }}"
+          "${CHART_REPOSITORY}"
+
+    - name: Prepare release manifest
+      shell: bash
+      run: |
+        gardener_version="$(awk '$1 == "github.com/gardener/gardener" { print $2 }' go.mod)"
+        test -n "${gardener_version}"
+        GARDENER_VERSION="${gardener_version}" yq eval \
+          '.version = strenv(RELEASE_TAG) | .builtWith."gardener/gardener" = strenv(GARDENER_VERSION)' \
+          manifest.yaml > "${RUNNER_TEMP}/manifest.yaml"
+
+    - name: Set up ORAS
+      uses: oras-project/setup-oras@v1
+
+    - name: Push release manifest
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      run: |
+        oras push "${MANIFEST_REPOSITORY}/gardener-extension-example:${RELEASE_TAG}" \
+          --artifact-type application/yaml \
+          manifest.yaml:application/yaml
+
+    - name: Attach manifest to extension image
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      env:
+        IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+      run: |
+        oras attach "${IMAGE_NAME}@${IMAGE_DIGEST}" \
+          --distribution-spec v1.1-referrers-tag \
+          --artifact-type application/yaml \
+          manifest.yaml:application/yaml
+
+    - name: Attach manifest to Helm chart
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      run: |
+        chart_name="${CHART_REPOSITORY#oci://}/gardener-extension-example"
+        chart_digest="$(oras resolve "${chart_name}:${RELEASE_TAG#v}")"
+        oras attach "${chart_name}@${chart_digest}" \
+          --distribution-spec v1.1-referrers-tag \
+          --artifact-type application/yaml \
+          manifest.yaml:application/yaml
