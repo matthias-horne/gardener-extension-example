@@ -95,24 +95,24 @@ jobs:
           --artifact-type application/yaml \
           manifest.yaml:application/yaml
 
-    - name: Attach manifest to extension image
-      shell: bash
-      working-directory: ${{ runner.temp }}
-      env:
-        IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-      run: |
-        oras attach "${IMAGE_NAME}@${IMAGE_DIGEST}" \
-          --distribution-spec v1.1-referrers-tag \
-          --artifact-type application/yaml \
-          manifest.yaml:application/yaml
-
-    - name: Attach manifest to Helm chart
-      shell: bash
-      working-directory: ${{ runner.temp }}
-      run: |
-        chart_name="${CHART_REPOSITORY#oci://}/gardener-extension-example"
-        chart_digest="$(oras resolve "${chart_name}:${RELEASE_TAG#v}")"
-        oras attach "${chart_name}@${chart_digest}" \
-          --distribution-spec v1.1-referrers-tag \
-          --artifact-type application/yaml \
-          manifest.yaml:application/yaml
+#     - name: Attach manifest to extension image
+#       shell: bash
+#       working-directory: ${{ runner.temp }}
+#       env:
+#         IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+#       run: |
+#         oras attach "${IMAGE_NAME}@${IMAGE_DIGEST}" \
+#           --distribution-spec v1.1-referrers-tag \
+#           --artifact-type application/yaml \
+#           manifest.yaml:application/yaml
+#
+#     - name: Attach manifest to Helm chart
+#       shell: bash
+#       working-directory: ${{ runner.temp }}
+#       run: |
+#         chart_name="${CHART_REPOSITORY#oci://}/gardener-extension-example"
+#         chart_digest="$(oras resolve "${chart_name}:${RELEASE_TAG#v}")"
+#         oras attach "${chart_name}@${chart_digest}" \
+#           --distribution-spec v1.1-referrers-tag \
+#           --artifact-type application/yaml \
+#           manifest.yaml:application/yaml
