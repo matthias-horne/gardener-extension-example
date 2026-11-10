@@ -1,0 +1,5 @@
+apiVersion: example.extensions.config.gardener.cloud/v1alpha1
+kind: ControllerConfiguration
+clientConnection:
+  qps: 100
+  burst: 130

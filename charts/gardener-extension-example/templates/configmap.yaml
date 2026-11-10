@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "name" . }}-configmap
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "labels" . | indent 4 }}
+data:
+  config.yaml: |
+    apiVersion: example.extensions.config.gardener.cloud/v1alpha1
+    kind: ControllerConfiguration
+{{- if .Values.config.clientConnection }}
+    clientConnection:
+{{ toYaml .Values.config.clientConnection | indent 6 }}
+{{- end }}

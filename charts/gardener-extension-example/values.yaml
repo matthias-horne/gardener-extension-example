@@ -1,0 +1,30 @@
+image:
+  repository: ghcr.io/gardener/gardener-extension-example
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+resources: {}
+
+controllers:
+  concurrentSyncs: 5
+  heartbeat:
+    renewIntervalSeconds: 30
+  ignoreOperationAnnotation: false
+
+disableControllers: []
+
+metricsPort: 8080
+healthPort: 8081
+logLevel: info
+logFormat: json
+
+config:
+  clientConnection:
+    acceptContentTypes: application/json
+    contentType: application/json
+    qps: 100
+    burst: 130
+
+gardener:
+  version: ""

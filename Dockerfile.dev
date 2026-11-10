@@ -1,0 +1,4 @@
+FROM alpine:3.24
+COPY bin/gardener-extension-example /gardener-extension-example
+USER 65532:65532
+ENTRYPOINT ["/gardener-extension-example"]
