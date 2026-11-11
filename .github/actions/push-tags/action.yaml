@@ -1,0 +1,92 @@
+---
+name: Push Tags
+description: Derives artifact tags from the triggering event.
+
+inputs:
+  image-name:
+    description: The extension container image name.
+    required: false
+  admission-image-name:
+    description: The admission controller container image name.
+    required: false
+
+outputs:
+  container_tag:
+    description: The tag for container images and other OCI artifacts.
+    value: ${{ steps.tags.outputs.container_tag }}
+  helm_tag:
+    description: The semver-compatible tag for Helm charts.
+    value: ${{ steps.tags.outputs.helm_tag }}
+  image_tags:
+    description: The full tag list for the extension container image.
+    value: ${{ steps.tags.outputs.image_tags }}
+  admission_image_tags:
+    description: The full tag list for the admission controller container image.
+    value: ${{ steps.tags.outputs.admission_image_tags }}
+
+runs:
+  using: composite
+  steps:
+    - name: Derive tags
+      id: tags
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        REF_TYPE: ${{ github.ref_type }}
+        REF_NAME: ${{ github.ref_name }}
+        HEAD_REF: ${{ github.head_ref }}
+        PR_NUMBER: ${{ github.event.number }}
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+        IMAGE_NAME: ${{ inputs.image-name }}
+        ADMISSION_IMAGE_NAME: ${{ inputs.admission-image-name }}
+      run: |
+        case "${EVENT_NAME}" in
+          release)
+            container_tag="${RELEASE_TAG}"
+            helm_tag="${RELEASE_TAG}"
+            ;;
+          pull_request)
+            branch="${HEAD_REF##*/}"
+            container_tag="pr-${PR_NUMBER}-${branch}"
+            helm_tag="v0.0.0-pr.${PR_NUMBER}"
+            ;;
+          push)
+            if [[ "${REF_TYPE}" == "tag" ]]; then
+              container_tag="${REF_NAME}"
+              helm_tag="${REF_NAME}"
+            else
+              branch="${REF_NAME##*/}"
+              container_tag="branch-${branch}"
+              helm_tag="v0.0.0-${branch}"
+            fi
+            ;;
+          *)
+            echo "Unsupported event: ${EVENT_NAME}" >&2
+            exit 1
+            ;;
+        esac
+
+        {
+          echo "container_tag=${container_tag}"
+          echo "helm_tag=${helm_tag}"
+
+          if [[ -n "${IMAGE_NAME}" ]]; then
+            image_tags="${IMAGE_NAME}:${container_tag}"
+            if [[ "${EVENT_NAME}" == "release" ]]; then
+              image_tags="${image_tags}"$'\n'"${IMAGE_NAME}:latest"
+            fi
+            echo "image_tags<<EOF"
+            echo "${image_tags}"
+            echo "EOF"
+          fi
+
+          if [[ -n "${ADMISSION_IMAGE_NAME}" ]]; then
+            admission_image_tags="${ADMISSION_IMAGE_NAME}:${container_tag}"
+            if [[ "${EVENT_NAME}" == "release" ]]; then
+              admission_image_tags="${admission_image_tags}"$'\n'"${ADMISSION_IMAGE_NAME}:latest"
+            fi
+            echo "admission_image_tags<<EOF"
+            echo "${admission_image_tags}"
+            echo "EOF"
+          fi
+        } >> "${GITHUB_OUTPUT}"

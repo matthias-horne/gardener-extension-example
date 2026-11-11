@@ -17,23 +17,33 @@ make test
 
 `make build` builds both controller binaries. Build both container images with `make docker-image`, or use `make docker-image-extension` and `make docker-image-admission` individually. The default images are `ghcr.io/gardener/gardener-extension-example:latest` and `ghcr.io/gardener/gardener-extension-admission-example:latest`; override `REGISTRY` and `IMAGE_TAG` as needed.
 
-## Release artifacts
+## Published artifacts
 
-Publishing a GitHub release builds and pushes these artifacts to GHCR:
+The pipeline publishes artifacts for GitHub releases, pushes to `main`, and pull requests. Tags are derived from the event that triggered the workflow:
+
+| Event | Image, extension, compatibility | Helm chart (OCI) |
+| --- | --- | --- |
+| Release `<tag>` | `<tag>` | `<tag>` |
+| Push to `main` | `branch-main` | `v0.0.0-main` |
+| Pull request `#<number>` from branch `<branch>` | `pr-<number>-<branch>` | `v0.0.0-pr.<number>` |
+
+Helm chart tags use a stricter semver-compatible format because Helm parses them as versions. For a release `vX.Y.Z`, the artifacts are published to GHCR as:
 
 | Artifact | Reference for release `vX.Y.Z` |
 | --- | --- |
 | Extension image | `ghcr.io/gardener/gardener-extension-example:vX.Y.Z` |
 | Admission image | `ghcr.io/gardener/gardener-extension-admission-example:vX.Y.Z` |
-| Helm chart | `ghcr.io/gardener/charts/gardener-extension-example:X.Y.Z` |
-| Admission runtime chart | `ghcr.io/gardener/charts/admission-example-runtime:X.Y.Z` |
-| Admission application chart | `ghcr.io/gardener/charts/admission-example-application:X.Y.Z` |
+| Extension chart | `ghcr.io/gardener/charts/gardener-extension-example:vX.Y.Z` |
+| Admission runtime chart | `ghcr.io/gardener/charts/admission-example-runtime:vX.Y.Z` |
+| Admission application chart | `ghcr.io/gardener/charts/admission-example-application:vX.Y.Z` |
 | Extension resource (`extension.yaml`) | `ghcr.io/gardener/extensions/gardener-extension-example:vX.Y.Z` |
 | Compatibility information (`compatibility.yaml`) | OCI referrer attached to the extension resource by digest |
 
-Both images are also tagged `latest`. Helm chart versions omit the leading `v`, while their `appVersion` uses the full release tag. For forks, replace `gardener` with the repository owner.
+Both images are also tagged `latest` on releases. The chart `appVersion` values and image tags match the image tag for the triggering event. For forks, replace `gardener` with the repository owner.
 
-The published `extension.yaml` is generated from [example/extension.yaml](example/extension.yaml), with all Helm chart references and the admission image set to the repository owner and release version. [compatibility.yaml](compatibility.yaml) tracks manually maintained `requires` and `supportedFeatures`. The release workflow adds the Gardener dependency version from [go.mod](go.mod) as `builtWith."gardener/gardener"` and preserves any `testedWith` information added after compatibility testing. The extension artifact and its YAML file use media type `application/gardener.extension+yaml`; the compatibility artifact and its YAML file use `application/gardener.compatibility+yaml`.
+Pull requests from forks are built and tested, but artifacts are only published for pull requests from branches in this repository because fork pull requests receive a read-only token.
+
+The published `extension.yaml` is generated from [example/extension.yaml](example/extension.yaml), with its extension and admission chart refs, manifest annotation, and image values set to the artifacts for the triggering event. [compatibility.yaml](compatibility.yaml) tracks manually maintained `requires` and `supportedFeatures`. The workflow adds the Gardener dependency version from [go.mod](go.mod) as `builtWith."gardener/gardener"` and preserves any `testedWith` information added after compatibility testing. The extension artifact and its YAML file use media type `application/gardener.extension+yaml`; the compatibility artifact and its YAML file use `application/gardener.compatibility+yaml`.
 
 ### Download artifacts
 
@@ -46,7 +56,7 @@ chart=ghcr.io/gardener/charts/gardener-extension-example
 extension=ghcr.io/gardener/extensions/gardener-extension-example
 
 docker pull "${image}:${release_tag}"
-helm pull "oci://${chart}" --version "${release_tag#v}"
+helm pull "oci://${chart}" --version "${release_tag}"
 oras pull "${extension}:${release_tag}" --output ./release-extension
 ```
 
