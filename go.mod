@@ -9,7 +9,9 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
+	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
+	k8s.io/client-go v0.37.1
 	k8s.io/component-base v0.37.1
 	sigs.k8s.io/controller-runtime v0.25.2
 )
@@ -201,10 +203,8 @@ require (
 	helm.sh/helm/v4 v4.3.1 // indirect
 	istio.io/api v1.31.2 // indirect
 	istio.io/client-go v1.31.2 // indirect
-	k8s.io/api v0.37.1 // indirect
 	k8s.io/apiextensions-apiserver v0.37.1 // indirect
 	k8s.io/autoscaler/vertical-pod-autoscaler v1.8.0 // indirect
-	k8s.io/client-go v0.37.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-aggregator v0.37.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20260821135717-be32def86098 // indirect

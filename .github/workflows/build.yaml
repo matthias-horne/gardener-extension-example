@@ -24,6 +24,8 @@ jobs:
     - run: make test
     - uses: azure/setup-helm@v4.3.1
     - run: helm lint charts/gardener-extension-example
+    - run: helm lint charts/gardener-extension-admission-example/charts/runtime
+    - run: helm lint charts/gardener-extension-admission-example/charts/application
 
   release:
     if: github.event_name == 'release'
@@ -33,6 +35,7 @@ jobs:
       packages: write
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}
+      ADMISSION_IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/gardener-extension-admission-example
       CHART_REPOSITORY: oci://ghcr.io/${{ github.repository_owner }}/charts
       EXTENSION_REPOSITORY: ghcr.io/${{ github.repository_owner }}/extensions
       RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -52,33 +55,54 @@ jobs:
       uses: docker/build-push-action@v6
       with:
         context: .
+        target: gardener-extension-example
         push: true
         tags: |
           ${{ env.IMAGE_NAME }}:${{ env.RELEASE_TAG }}
           ${{ env.IMAGE_NAME }}:latest
 
+    - name: Build and push admission image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        target: gardener-extension-admission-example
+        push: true
+        tags: |
+          ${{ env.ADMISSION_IMAGE_NAME }}:${{ env.RELEASE_TAG }}
+          ${{ env.ADMISSION_IMAGE_NAME }}:latest
+
     - name: Set up Helm
       uses: azure/setup-helm@v4.3.1
 
-    - name: Package and push Helm chart
+    - name: Package and push Helm charts
       shell: bash
       run: |
         chart_version="${RELEASE_TAG#v}"
-        helm package charts/gardener-extension-example \
-          --version "${chart_version}" \
-          --app-version "${RELEASE_TAG}" \
-          --destination /tmp
         printf '%s' "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
           --username "${{ github.actor }}" \
           --password-stdin
-        helm push "/tmp/gardener-extension-example-${chart_version}.tgz" \
-          "${CHART_REPOSITORY}"
+        for chart in charts/gardener-extension-example \
+          charts/gardener-extension-admission-example/charts/runtime \
+          charts/gardener-extension-admission-example/charts/application; do
+          helm package "${chart}" \
+            --version "${chart_version}" \
+            --app-version "${RELEASE_TAG}" \
+            --destination /tmp
+          chart_name="$(yq eval '.name' "${chart}/Chart.yaml")"
+          helm push "/tmp/${chart_name}-${chart_version}.tgz" "${CHART_REPOSITORY}"
+        done
 
     - name: Prepare release extension and compatibility information
       shell: bash
       run: |
-        CHART_REF="${CHART_REPOSITORY#oci://}/gardener-extension-example:${RELEASE_TAG#v}" yq eval \
-          '.spec.deployment.extension.helm.ociRepository.ref = strenv(CHART_REF)' \
+        CHART_REF="${CHART_REPOSITORY#oci://}/gardener-extension-example:${RELEASE_TAG#v}" \
+        ADMISSION_RUNTIME_CHART_REF="${CHART_REPOSITORY#oci://}/admission-example-runtime:${RELEASE_TAG#v}" \
+        ADMISSION_APPLICATION_CHART_REF="${CHART_REPOSITORY#oci://}/admission-example-application:${RELEASE_TAG#v}" yq eval \
+          '.spec.deployment.extension.helm.ociRepository.ref = strenv(CHART_REF) |
+           .spec.deployment.admission.runtimeCluster.helm.ociRepository.ref = strenv(ADMISSION_RUNTIME_CHART_REF) |
+           .spec.deployment.admission.virtualCluster.helm.ociRepository.ref = strenv(ADMISSION_APPLICATION_CHART_REF) |
+           .spec.deployment.admission.values.image.repository = strenv(ADMISSION_IMAGE_NAME) |
+           .spec.deployment.admission.values.image.tag = strenv(RELEASE_TAG)' \
           example/extension.yaml > "${RUNNER_TEMP}/extension.yaml"
 
         gardener_version="$(awk '$1 == "github.com/gardener/gardener" { print $2 }' go.mod)"

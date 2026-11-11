@@ -7,6 +7,15 @@ metadata:
   name: example
 spec:
   deployment:
+    admission:
+      runtimeCluster:
+        helm:
+          ociRepository:
+            ref: ghcr.io/matthias-horne/charts/admission-example-runtime:0.0.2
+      virtualCluster:
+        helm:
+          ociRepository:
+            ref: ghcr.io/matthias-horne/charts/admission-example-application:0.0.2
     extension:
       helm:
         ociRepository:
