@@ -33,13 +33,19 @@ jobs:
       packages: write
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}
-      CHART_REPOSITORY: oci://ghcr.io/${{ github.repository_owner }}/charts
+      CHART_REPOSITORY: ghcr.io/${{ github.repository_owner }}/charts
       EXTENSION_REPOSITORY: ghcr.io/${{ github.repository_owner }}/extensions
       RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
     - uses: actions/checkout@v5
       with:
         ref: ${{ github.event.release.tag_name }}
+
+    - name: Set version
+      shell: bash
+      run: |
+        TAG="${{ github.event.release.tag_name }}"
+        echo "CHART_VERSION=${TAG#v}" >> $GITHUB_ENV
 
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
@@ -63,48 +69,18 @@ jobs:
     - name: Package and push Helm chart
       shell: bash
       run: |
-        chart_version="${RELEASE_TAG#v}"
         helm package charts/gardener-extension-example \
-          --version "${chart_version}" \
+          --version "${{ env.CHART_VERSION }}" \
           --app-version "${RELEASE_TAG}" \
           --destination /tmp
         printf '%s' "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
           --username "${{ github.actor }}" \
           --password-stdin
-        helm push "/tmp/gardener-extension-example-${chart_version}.tgz" \
-          "${CHART_REPOSITORY}"
+        helm push "/tmp/gardener-extension-example-${{ env.CHART_VERSION }}.tgz" \
+          "oci://${CHART_REPOSITORY}"
 
-    - name: Prepare release extension and compatibility information
-      shell: bash
-      run: |
-        CHART_REF="${CHART_REPOSITORY#oci://}/gardener-extension-example:${RELEASE_TAG#v}" yq eval \
-          '.spec.deployment.extension.helm.ociRepository.ref = strenv(CHART_REF)' \
-          example/extension.yaml > "${RUNNER_TEMP}/extension.yaml"
-
-        gardener_version="$(awk '$1 == "github.com/gardener/gardener" { print $2 }' go.mod)"
-        test -n "${gardener_version}"
-        GARDENER_VERSION="${gardener_version}" yq eval \
-          '.builtWith."gardener/gardener" = strenv(GARDENER_VERSION)' \
-          compatibility.yaml > "${RUNNER_TEMP}/compatibility.yaml"
-
-    - name: Set up ORAS
-      uses: oras-project/setup-oras@v1
-
-    - name: Push release extension
-      shell: bash
-      working-directory: ${{ runner.temp }}
-      run: |
-        oras push "${EXTENSION_REPOSITORY}/gardener-extension-example:${RELEASE_TAG}" \
-          --artifact-type application/gardener.extension+yaml \
-          extension.yaml:application/gardener.extension+yaml
-
-    - name: Attach compatibility information to release extension
-      shell: bash
-      working-directory: ${{ runner.temp }}
-      run: |
-        extension_name="${EXTENSION_REPOSITORY}/gardener-extension-example"
-        extension_digest="$(oras resolve "${extension_name}:${RELEASE_TAG}")"
-        oras attach "${extension_name}@${extension_digest}" \
-          --distribution-spec v1.1-referrers-tag \
-          --artifact-type application/gardener.compatibility+yaml \
-          compatibility.yaml:application/gardener.compatibility+yaml
+    - name: Create compatibility artifacts
+      uses: ./.github/actions/compatibility
+      with:
+        chart-ref: ${{ env.CHART_REPOSITORY }}/gardener-extension-example:${{ env.CHART_VERSION }}
+        extension-ref: ${{ env.EXTENSION_REPOSITORY }}/gardener-extension-example:${{ env.RELEASE_TAG }}

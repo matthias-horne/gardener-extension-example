@@ -1,0 +1,50 @@
+---
+name: Manifest and compatibility artifacts
+description: Pushes the extension's manifest OCI artifact and a compatibility to artifact.
+
+inputs:
+  chart-ref:
+    description: The extension's OCI helm chart ref.
+    required: true
+  extension-ref:
+    description: The ref that this extension's manifest OCI artifact will be pushed to.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare release extension and compatibility information
+      shell: bash
+      env:
+        RAW_CHART_REF: ${{ inputs.chart-ref }}
+      run: |
+        # write ref into extension.yaml
+        yq eval '.spec.deployment.extension.helm.ociRepository.ref = strenv(RAW_CHART_REF)' example/extension.yaml > "${RUNNER_TEMP}/extension.yaml"
+
+        gardener_version="$(awk '$1 == "github.com/gardener/gardener" { print $2 }' go.mod)"
+        test -n "${gardener_version}"
+        GARDENER_VERSION="${gardener_version}" yq eval \
+          '.builtWith."gardener/gardener" = strenv(GARDENER_VERSION)' \
+          compatibility.yaml > "${RUNNER_TEMP}/compatibility.yaml"
+
+    - name: Set up ORAS
+      uses: oras-project/setup-oras@v2
+
+    - name: Push release extension
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      run: |
+        oras push "${{ inputs.extension-ref }}" \
+          --artifact-type application/gardener.extension+yaml \
+          extension.yaml:application/gardener.extension+yaml
+
+    - name: Attach compatibility information to release extension
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      run: |
+        extension_name="$(echo "${{ inputs.extension-ref }}" | cut -d: -f1)"
+        extension_digest="$(oras resolve "{{ inputs.extension-ref }}")"
+        oras attach "${extension_name}@${extension_digest}" \
+          --distribution-spec v1.1-referrers-tag \
+          --artifact-type application/gardener.compatibility+yaml \
+          compatibility.yaml:application/gardener.compatibility+yaml
