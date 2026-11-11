@@ -7,10 +7,29 @@ metadata:
   name: example
 spec:
   deployment:
+    admission:
+      runtimeCluster:
+        helm:
+          ociRepository:
+            ref: ghcr.io/matthias-horne/charts/admission-example-runtime:v0.0.2
+      virtualCluster:
+        helm:
+          ociRepository:
+            ref: ghcr.io/matthias-horne/charts/admission-example-application:v0.0.2
+      values:
+        image:
+          repository: ghcr.io/matthias-horne/gardener-extension-admission-example
+          tag: v0.0.2
+          pullPolicy: IfNotPresent
     extension:
       helm:
         ociRepository:
           ref: ghcr.io/matthias-horne/charts/gardener-extension-example:v0.0.2
+      runtimeClusterValues:
+        image:
+          repository: ghcr.io/matthias-horne/gardener-extension-example
+          tag: v0.0.2
+          pullPolicy: IfNotPresent
   resources:
   - kind: Extension
     type: example

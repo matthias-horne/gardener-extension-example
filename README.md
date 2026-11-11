@@ -4,6 +4,8 @@ This repository is a minimal [Gardener](https://gardener.cloud/) extension that 
 
 The controller accepts an optional, empty `ExampleConfig`, logs reconciliation, and completes the extension lifecycle without creating additional resources. Gardener's generic controller handles operation status and finalizers. The controller manager includes leader election, heartbeat, metrics, and health and readiness probes.
 
+The admission controller validates `ExampleConfig` in a Shoot's `spec.extensions` on creation and updates. It accepts an omitted configuration and rejects malformed configurations, unknown fields, and unsupported kinds or API versions. Gardener's webhook framework manages TLS certificates, CA rotation, and the `ValidatingWebhookConfiguration`. The webhook selects Shoots labelled `extensions.extensions.gardener.cloud/example: "true"`, which Gardener sets for Shoots using this extension.
+
 ## Build and test
 
 Use the Go version specified in [go.mod](go.mod):
@@ -13,7 +15,7 @@ make build
 make test
 ```
 
-Build the container image with `make docker-image`. The default image is `ghcr.io/gardener/gardener-extension-example:latest`; override `REGISTRY` and `IMAGE_TAG` as needed.
+`make build` builds both controller binaries. Build both container images with `make docker-image`, or use `make docker-image-extension` and `make docker-image-admission` individually. The default images are `ghcr.io/gardener/gardener-extension-example:latest` and `ghcr.io/gardener/gardener-extension-admission-example:latest`; override `REGISTRY` and `IMAGE_TAG` as needed.
 
 ## Published artifacts
 
@@ -30,15 +32,18 @@ Helm chart tags use a stricter semver-compatible format because Helm parses them
 | Artifact | Reference for release `vX.Y.Z` |
 | --- | --- |
 | Extension image | `ghcr.io/gardener/gardener-extension-example:vX.Y.Z` |
-| Helm chart | `ghcr.io/gardener/charts/gardener-extension-example:vX.Y.Z` |
+| Admission image | `ghcr.io/gardener/gardener-extension-admission-example:vX.Y.Z` |
+| Extension chart | `ghcr.io/gardener/charts/gardener-extension-example:vX.Y.Z` |
+| Admission runtime chart | `ghcr.io/gardener/charts/admission-example-runtime:vX.Y.Z` |
+| Admission application chart | `ghcr.io/gardener/charts/admission-example-application:vX.Y.Z` |
 | Extension resource (`extension.yaml`) | `ghcr.io/gardener/extensions/gardener-extension-example:vX.Y.Z` |
 | Compatibility information (`compatibility.yaml`) | OCI referrer attached to the extension resource by digest |
 
-The image is also tagged `latest` on releases. The chart's `appVersion` and `image.tag` match the image tag for the triggering event. For forks, replace `gardener` with the repository owner.
+Both images are also tagged `latest` on releases. The chart `appVersion` values and image tags match the image tag for the triggering event. For forks, replace `gardener` with the repository owner.
 
 Pull requests from forks are built and tested, but artifacts are only published for pull requests from branches in this repository because fork pull requests receive a read-only token.
 
-The published `extension.yaml` is generated from [example/extension.yaml](example/extension.yaml), with its extension chart ref, manifest annotation, and runtime cluster image values set to the artifacts for the triggering event. [compatibility.yaml](compatibility.yaml) tracks manually maintained `requires` and `supportedFeatures`. The workflow adds the Gardener dependency version from [go.mod](go.mod) as `builtWith."gardener/gardener"` and preserves any `testedWith` information added after compatibility testing. The extension artifact and its YAML file use media type `application/gardener.extension+yaml`; the compatibility artifact and its YAML file use `application/gardener.compatibility+yaml`.
+The published `extension.yaml` is generated from [example/extension.yaml](example/extension.yaml), with its extension and admission chart refs, manifest annotation, and image values set to the artifacts for the triggering event. [compatibility.yaml](compatibility.yaml) tracks manually maintained `requires` and `supportedFeatures`. The workflow adds the Gardener dependency version from [go.mod](go.mod) as `builtWith."gardener/gardener"` and preserves any `testedWith` information added after compatibility testing. The extension artifact and its YAML file use media type `application/gardener.extension+yaml`; the compatibility artifact and its YAML file use `application/gardener.compatibility+yaml`.
 
 ### Download artifacts
 
@@ -85,10 +90,36 @@ bin/gardener-extension-example \
   --heartbeat-namespace=garden
 ```
 
-For a Gardener local setup, use `make push-to-gardener-local` to build and load the image, then register the extension with `kubectl apply -k example/`. Adapt and apply [example/shoot.yaml](example/shoot.yaml) to enable it for a shoot.
+For a Gardener local setup, use `make push-to-gardener-local` to build and load both images, then register the extension with `kubectl apply -k example/`. Adapt and apply [example/shoot.yaml](example/shoot.yaml) to enable it for a shoot.
+
+## Admission deployment
+
+The admission charts follow the [GCP extension](https://github.com/gardener/gardener-extension-provider-gcp) layout:
+
+- [Runtime chart](charts/gardener-extension-admission-example/charts/runtime) deploys the controller, Service, ServiceAccount, namespace RBAC for certificate secrets and leader election, and PodDisruptionBudget.
+- [Application chart](charts/gardener-extension-admission-example/charts/application) grants access to webhook configurations and namespaces in the garden cluster. Webhook registrations are created by the controller at startup.
+
+[example/extension.yaml](example/extension.yaml) references both charts for deployment through gardener-operator. The operator injects the garden kubeconfig; certificates and leader election use the runtime cluster's credentials. `GARDEN_KUBECONFIG` selects the garden kubeconfig, and `SOURCE_CLUSTER` enables a separate cluster for certificates and leader election, using `SOURCE_KUBECONFIG` or in-cluster credentials.
+
+For a single garden cluster, install both charts into the same namespace, with your kubeconfig pointing to that garden:
+
+```sh
+helm upgrade --install example-admission-application \
+  charts/gardener-extension-admission-example/charts/application \
+  --namespace garden --create-namespace \
+  --set gardener.virtualCluster.enabled=false
+helm upgrade --install example-admission \
+  charts/gardener-extension-admission-example/charts/runtime \
+  --namespace garden \
+  --set gardener.virtualCluster.enabled=false
+```
+
+The Service exposes HTTPS on port 443 and forwards to the non-root webhook server on port 10250. `make push-to-gardener-local` loads both images; `kubectl apply -k example/` registers the seed extension, and the Helm commands above install admission in the garden cluster.
 
 ## Adapt the example
 
 Implement reconciliation and cleanup in [pkg/controller/example/actuator.go](pkg/controller/example/actuator.go). Add provider configuration fields to the internal and versioned types under [pkg/apis/example](pkg/apis/example), and controller configuration fields under [pkg/apis/config](pkg/apis/config).
+
+Add semantic admission checks in [pkg/admission/validator/shoot.go](pkg/admission/validator/shoot.go) when extending `ExampleConfig`. Register additional webhooks in [pkg/admission/cmd/options.go](pkg/admission/cmd/options.go).
 
 After changing API types or the Helm chart, run `make generate` to regenerate API helpers and the embedded chart in [example/controller-registration.yaml](example/controller-registration.yaml). Generation requires Helm and `yq`; Gardener's registration generator also requires GNU tar (available as `gtar` on macOS).

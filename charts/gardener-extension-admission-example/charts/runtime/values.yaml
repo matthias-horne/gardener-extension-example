@@ -1,0 +1,24 @@
+image:
+  repository: ghcr.io/gardener/gardener-extension-admission-example
+  tag: latest
+  pullPolicy: IfNotPresent
+replicaCount: 1
+resources: {}
+metricsPort: 8080
+healthPort: 8081
+logLevel: info
+logFormat: json
+disableWebhooks: []
+webhookConfig:
+  serverPort: 10250
+
+# Optional kubeconfig for the garden cluster. Otherwise use in-cluster
+# credentials or GARDEN_KUBECONFIG injected by gardener-operator.
+kubeconfig: ""
+
+gardener:
+  virtualCluster:
+    enabled: true
+    namespace: ""
+  runtimeCluster:
+    priorityClassName: ""

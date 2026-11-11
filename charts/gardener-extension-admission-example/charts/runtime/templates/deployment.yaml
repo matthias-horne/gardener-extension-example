@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "labels" . | indent 4 }}
+    high-availability-config.resources.gardener.cloud/type: server
+spec:
+  revisionHistoryLimit: 0
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+{{ include "labels" . | indent 6 }}
+  template:
+    metadata:
+      {{- if .Values.kubeconfig }}
+      annotations:
+        checksum/kubeconfig: {{ include (print $.Template.BasePath "/secret-kubeconfig.yaml") . | sha256sum }}
+      {{- end }}
+      labels:
+        networking.gardener.cloud/to-dns: allowed
+        networking.gardener.cloud/to-runtime-apiserver: allowed
+        networking.resources.gardener.cloud/to-virtual-garden-kube-apiserver-tcp-443: allowed
+{{ include "labels" . | indent 8 }}
+    spec:
+      {{- with .Values.gardener.runtimeCluster.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      serviceAccountName: {{ include "name" . }}
+      securityContext:
+        runAsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+      containers:
+      - name: {{ include "name" . }}
+        image: {{ include "image" .Values.image | quote }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /gardener-extension-admission-example
+        - --webhook-config-server-port={{ .Values.webhookConfig.serverPort }}
+        - --webhook-config-service-port=443
+        {{- if .Values.gardener.virtualCluster.enabled }}
+        - --webhook-config-mode=url
+        - --webhook-config-url={{ include "name" . }}.{{ .Release.Namespace }}
+        {{- else }}
+        - --webhook-config-mode=service
+        {{- end }}
+        - --webhook-config-namespace={{ .Release.Namespace }}
+        {{- with .Values.gardener.virtualCluster.namespace }}
+        - --webhook-config-owner-namespace={{ . }}
+        {{- end }}
+        {{- if .Values.kubeconfig }}
+        - --kubeconfig=/etc/admission-example/kubeconfig/kubeconfig
+        {{- end }}
+        - --leader-election-id={{ include "leaderelectionid" . }}
+        - --metrics-bind-address=:{{ .Values.metricsPort }}
+        - --health-bind-address=:{{ .Values.healthPort }}
+        - --log-level={{ .Values.logLevel }}
+        - --log-format={{ .Values.logFormat }}
+        - --disable-webhooks={{ .Values.disableWebhooks | join "," }}
+        env:
+        - name: LEADER_ELECTION_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: WEBHOOK_CONFIG_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        {{- if .Values.gardener.virtualCluster.enabled }}
+        - name: SOURCE_CLUSTER
+          value: enabled
+        {{- end }}
+        ports:
+        - name: webhook-server
+          containerPort: {{ .Values.webhookConfig.serverPort }}
+        - name: metrics
+          containerPort: {{ .Values.metricsPort }}
+        - name: health
+          containerPort: {{ .Values.healthPort }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+        {{- with .Values.resources }}
+        resources:
+{{ toYaml . | indent 10 }}
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        {{- if .Values.kubeconfig }}
+        volumeMounts:
+        - name: kubeconfig
+          mountPath: /etc/admission-example/kubeconfig
+          readOnly: true
+        {{- end }}
+      {{- if .Values.kubeconfig }}
+      volumes:
+      - name: kubeconfig
+        secret:
+          secretName: {{ include "name" . }}-kubeconfig
+      {{- end }}

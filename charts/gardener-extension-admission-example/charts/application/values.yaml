@@ -1,0 +1,7 @@
+gardener:
+  virtualCluster:
+    enabled: true
+    # Leave empty to create a service account in the release namespace.
+    serviceAccount: {}
+    # name: extension-admission-example
+    # namespace: garden
