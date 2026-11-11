@@ -49,27 +49,9 @@ jobs:
     - name: Determine tags
       id: tags
       uses: ./.github/actions/push-tags
-
-    - name: Determine container tags
-      id: container_tags
-      shell: bash
-      env:
-        CONTAINER_TAG: ${{ steps.tags.outputs.container_tag }}
-      run: |
-        image_tags="${IMAGE_NAME}:${CONTAINER_TAG}"
-        admission_image_tags="${ADMISSION_IMAGE_NAME}:${CONTAINER_TAG}"
-        if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
-          image_tags="${image_tags}"$'\n'"${IMAGE_NAME}:latest"
-          admission_image_tags="${admission_image_tags}"$'\n'"${ADMISSION_IMAGE_NAME}:latest"
-        fi
-        {
-          echo "image_tags<<EOF"
-          echo "${image_tags}"
-          echo "EOF"
-          echo "admission_image_tags<<EOF"
-          echo "${admission_image_tags}"
-          echo "EOF"
-        } >> "${GITHUB_OUTPUT}"
+      with:
+        image-name: ${{ env.IMAGE_NAME }}
+        admission-image-name: ${{ env.ADMISSION_IMAGE_NAME }}
 
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
@@ -84,7 +66,7 @@ jobs:
         context: .
         target: gardener-extension-example
         push: true
-        tags: ${{ steps.container_tags.outputs.image_tags }}
+        tags: ${{ steps.tags.outputs.image_tags }}
 
     - name: Build and push admission image
       uses: docker/build-push-action@v6
@@ -92,7 +74,7 @@ jobs:
         context: .
         target: gardener-extension-admission-example
         push: true
-        tags: ${{ steps.container_tags.outputs.admission_image_tags }}
+        tags: ${{ steps.tags.outputs.admission_image_tags }}
 
     - name: Set up Helm
       uses: azure/setup-helm@v4.3.1
