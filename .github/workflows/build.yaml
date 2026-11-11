@@ -34,7 +34,7 @@ jobs:
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}
       CHART_REPOSITORY: oci://ghcr.io/${{ github.repository_owner }}/charts
-      MANIFEST_REPOSITORY: ghcr.io/${{ github.repository_owner }}/manifests
+      EXTENSION_REPOSITORY: ghcr.io/${{ github.repository_owner }}/extensions
       RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
     - uses: actions/checkout@v5
@@ -49,7 +49,6 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build and push extension image
-      id: image
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -75,44 +74,37 @@ jobs:
         helm push "/tmp/gardener-extension-example-${chart_version}.tgz" \
           "${CHART_REPOSITORY}"
 
-    - name: Prepare release manifest
+    - name: Prepare release extension and compatibility information
       shell: bash
       run: |
+        CHART_REF="${CHART_REPOSITORY#oci://}/gardener-extension-example:${RELEASE_TAG#v}" yq eval \
+          '.spec.deployment.extension.helm.ociRepository.ref = strenv(CHART_REF)' \
+          example/extension.yaml > "${RUNNER_TEMP}/extension.yaml"
+
         gardener_version="$(awk '$1 == "github.com/gardener/gardener" { print $2 }' go.mod)"
         test -n "${gardener_version}"
         GARDENER_VERSION="${gardener_version}" yq eval \
-          '.version = strenv(RELEASE_TAG) | .builtWith."gardener/gardener" = strenv(GARDENER_VERSION)' \
-          manifest.yaml > "${RUNNER_TEMP}/manifest.yaml"
+          '.builtWith."gardener/gardener" = strenv(GARDENER_VERSION)' \
+          compatibility.yaml > "${RUNNER_TEMP}/compatibility.yaml"
 
     - name: Set up ORAS
       uses: oras-project/setup-oras@v1
 
-    - name: Push release manifest
+    - name: Push release extension
       shell: bash
       working-directory: ${{ runner.temp }}
       run: |
-        oras push "${MANIFEST_REPOSITORY}/gardener-extension-example:${RELEASE_TAG}" \
-          --artifact-type application/yaml \
-          manifest.yaml:application/yaml
+        oras push "${EXTENSION_REPOSITORY}/gardener-extension-example:${RELEASE_TAG}" \
+          --artifact-type application/gardener.extension+yaml \
+          extension.yaml:application/gardener.extension+yaml
 
-#     - name: Attach manifest to extension image
-#       shell: bash
-#       working-directory: ${{ runner.temp }}
-#       env:
-#         IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-#       run: |
-#         oras attach "${IMAGE_NAME}@${IMAGE_DIGEST}" \
-#           --distribution-spec v1.1-referrers-tag \
-#           --artifact-type application/yaml \
-#           manifest.yaml:application/yaml
-#
-#     - name: Attach manifest to Helm chart
-#       shell: bash
-#       working-directory: ${{ runner.temp }}
-#       run: |
-#         chart_name="${CHART_REPOSITORY#oci://}/gardener-extension-example"
-#         chart_digest="$(oras resolve "${chart_name}:${RELEASE_TAG#v}")"
-#         oras attach "${chart_name}@${chart_digest}" \
-#           --distribution-spec v1.1-referrers-tag \
-#           --artifact-type application/yaml \
-#           manifest.yaml:application/yaml
+    - name: Attach compatibility information to release extension
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      run: |
+        extension_name="${EXTENSION_REPOSITORY}/gardener-extension-example"
+        extension_digest="$(oras resolve "${extension_name}:${RELEASE_TAG}")"
+        oras attach "${extension_name}@${extension_digest}" \
+          --distribution-spec v1.1-referrers-tag \
+          --artifact-type application/gardener.compatibility+yaml \
+          compatibility.yaml:application/gardener.compatibility+yaml

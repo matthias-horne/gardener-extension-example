@@ -3,14 +3,14 @@ kind: Extension
 metadata:
   annotations:
     security.gardener.cloud/pod-security-enforce: baseline
+    extension.garden.cloud/manifest: ghcr.io/matthias-horne/extensions/gardener-extension-example:v0.0.2
   name: example
 spec:
   deployment:
     extension:
       helm:
         ociRepository:
-          ref: ghcr.io/gardener/charts/gardener-extension-example:0.0.2
-  manifest: ghcr.io/gardener/manifests/gardener-extension-example:0.0.2
+          ref: ghcr.io/matthias-horne/charts/gardener-extension-example:0.0.2
   resources:
   - kind: Extension
     type: example

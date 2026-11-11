@@ -15,6 +15,54 @@ make test
 
 Build the container image with `make docker-image`. The default image is `ghcr.io/gardener/gardener-extension-example:latest`; override `REGISTRY` and `IMAGE_TAG` as needed.
 
+## Release artifacts
+
+Publishing a GitHub release builds and pushes these artifacts to GHCR:
+
+| Artifact | Reference for release `vX.Y.Z` |
+| --- | --- |
+| Extension image | `ghcr.io/gardener/gardener-extension-example:vX.Y.Z` |
+| Helm chart | `ghcr.io/gardener/charts/gardener-extension-example:X.Y.Z` |
+| Extension resource (`extension.yaml`) | `ghcr.io/gardener/extensions/gardener-extension-example:vX.Y.Z` |
+| Compatibility information (`compatibility.yaml`) | OCI referrer attached to the extension resource by digest |
+
+The image is also tagged `latest`. The Helm chart version omits the leading `v`, while its `appVersion` uses the full release tag. For forks, replace `gardener` with the repository owner.
+
+The published `extension.yaml` is generated from [example/extension.yaml](example/extension.yaml), with its Helm chart reference set to the repository owner and release version. [compatibility.yaml](compatibility.yaml) tracks manually maintained `requires` and `supportedFeatures`. The release workflow adds the Gardener dependency version from [go.mod](go.mod) as `builtWith."gardener/gardener"` and preserves any `testedWith` information added after compatibility testing. The extension artifact and its YAML file use media type `application/gardener.extension+yaml`; the compatibility artifact and its YAML file use `application/gardener.compatibility+yaml`.
+
+### Download artifacts
+
+Install [ORAS](https://oras.land/docs/installation/) to download the extension resource. Replace `v0.0.2` with the desired release tag:
+
+```sh
+release_tag=v0.0.2
+image=ghcr.io/gardener/gardener-extension-example
+chart=ghcr.io/gardener/charts/gardener-extension-example
+extension=ghcr.io/gardener/extensions/gardener-extension-example
+
+docker pull "${image}:${release_tag}"
+helm pull "oci://${chart}" --version "${release_tag#v}"
+oras pull "${extension}:${release_tag}" --output ./release-extension
+```
+
+The last command writes `release-extension/extension.yaml`.
+
+### Discover attached compatibility information
+
+The pipeline uses the OCI referrers tag fallback for GHCR. Discover compatibility information attached to the extension resource with:
+
+```sh
+oras discover "${extension}:${release_tag}" \
+  --distribution-spec v1.1-referrers-tag \
+  --artifact-type application/gardener.compatibility+yaml
+```
+
+Copy the attachment digest from the discovery output to download its `compatibility.yaml`:
+
+```sh
+oras pull "${extension}@<compatibility-attachment-digest>" --output ./release-compatibility
+```
+
 ## Run locally
 
 With a kubeconfig pointing to a seed cluster:
