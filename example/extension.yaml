@@ -10,7 +10,7 @@ spec:
     extension:
       helm:
         ociRepository:
-          ref: ghcr.io/matthias-horne/charts/gardener-extension-example:0.0.2
+          ref: ghcr.io/matthias-horne/charts/gardener-extension-example:v0.0.2
   resources:
   - kind: Extension
     type: example

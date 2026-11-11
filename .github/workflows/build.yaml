@@ -25,27 +25,41 @@ jobs:
     - uses: azure/setup-helm@v4.3.1
     - run: helm lint charts/gardener-extension-example
 
-  release:
-    if: github.event_name == 'release'
+  publish:
+    needs: build
+    # Pull requests from forks only get a read-only token and cannot push packages.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}
+      CHART_NAME: gardener-extension-example
       CHART_REPOSITORY: ghcr.io/${{ github.repository_owner }}/charts
       EXTENSION_REPOSITORY: ghcr.io/${{ github.repository_owner }}/extensions
-      RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
     - uses: actions/checkout@v5
-      with:
-        ref: ${{ github.event.release.tag_name }}
 
-    - name: Set version
+    - name: Determine tags
+      id: tags
+      uses: ./.github/actions/push-tags
+
+    - name: Determine container tags
+      id: container_tags
       shell: bash
+      env:
+        CONTAINER_TAG: ${{ steps.tags.outputs.container_tag }}
       run: |
-        TAG="${{ github.event.release.tag_name }}"
-        echo "CHART_VERSION=${TAG#v}" >> $GITHUB_ENV
+        tags="${IMAGE_NAME}:${CONTAINER_TAG}"
+        if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+          tags="${tags}"$'\n'"${IMAGE_NAME}:latest"
+        fi
+        {
+          echo "tags<<EOF"
+          echo "${tags}"
+          echo "EOF"
+        } >> "${GITHUB_OUTPUT}"
 
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
@@ -59,28 +73,39 @@ jobs:
       with:
         context: .
         push: true
-        tags: |
-          ${{ env.IMAGE_NAME }}:${{ env.RELEASE_TAG }}
-          ${{ env.IMAGE_NAME }}:latest
+        tags: ${{ steps.container_tags.outputs.tags }}
 
     - name: Set up Helm
       uses: azure/setup-helm@v4.3.1
 
+    - name: Patch container image in chart values
+      shell: bash
+      env:
+        CONTAINER_TAG: ${{ steps.tags.outputs.container_tag }}
+      run: |
+        yq eval -i '
+          .image.repository = strenv(IMAGE_NAME) |
+          .image.tag = strenv(CONTAINER_TAG)
+        ' "charts/${CHART_NAME}/values.yaml"
+
     - name: Package and push Helm chart
       shell: bash
+      env:
+        HELM_TAG: ${{ steps.tags.outputs.helm_tag }}
+        APP_VERSION: ${{ steps.tags.outputs.container_tag }}
       run: |
-        helm package charts/gardener-extension-example \
-          --version "${{ env.CHART_VERSION }}" \
-          --app-version "${RELEASE_TAG}" \
-          --destination /tmp
         printf '%s' "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
           --username "${{ github.actor }}" \
           --password-stdin
-        helm push "/tmp/gardener-extension-example-${{ env.CHART_VERSION }}.tgz" \
+        helm package "charts/${CHART_NAME}" \
+          --version "${HELM_TAG}" \
+          --app-version "${APP_VERSION}" \
+          --destination "${RUNNER_TEMP}"
+        helm push "${RUNNER_TEMP}/${CHART_NAME}-${HELM_TAG}.tgz" \
           "oci://${CHART_REPOSITORY}"
 
     - name: Create compatibility artifacts
       uses: ./.github/actions/compatibility
       with:
-        chart-ref: ${{ env.CHART_REPOSITORY }}/gardener-extension-example:${{ env.CHART_VERSION }}
-        extension-ref: ${{ env.EXTENSION_REPOSITORY }}/gardener-extension-example:${{ env.RELEASE_TAG }}
+        chart-ref: ${{ env.CHART_REPOSITORY }}/${{ env.CHART_NAME }}:${{ steps.tags.outputs.helm_tag }}
+        extension-ref: ${{ env.EXTENSION_REPOSITORY }}/${{ env.CHART_NAME }}:${{ steps.tags.outputs.container_tag }}

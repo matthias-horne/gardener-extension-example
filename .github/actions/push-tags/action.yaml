@@ -1,0 +1,51 @@
+---
+name: Push Tags
+description: Derives artifact tags from the triggering event.
+
+outputs:
+  container_tag:
+    description: The tag for container images and other OCI artifacts.
+    value: ${{ steps.tags.outputs.container_tag }}
+  helm_tag:
+    description: The semver-compatible tag for Helm charts.
+    value: ${{ steps.tags.outputs.helm_tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Derive tags
+      id: tags
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        REF_TYPE: ${{ github.ref_type }}
+        REF_NAME: ${{ github.ref_name }}
+        HEAD_REF: ${{ github.head_ref }}
+        PR_NUMBER: ${{ github.event.number }}
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+      run: |
+        case "${EVENT_NAME}" in
+          release)
+            echo "container_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+            echo "helm_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+            ;;
+          pull_request)
+            branch="${HEAD_REF##*/}"
+            echo "container_tag=pr-${PR_NUMBER}-${branch}" >> "${GITHUB_OUTPUT}"
+            echo "helm_tag=v0.0.0-pr.${PR_NUMBER}" >> "${GITHUB_OUTPUT}"
+            ;;
+          push)
+            if [[ "${REF_TYPE}" == "tag" ]]; then
+              echo "container_tag=${REF_NAME}" >> "${GITHUB_OUTPUT}"
+              echo "helm_tag=${REF_NAME}" >> "${GITHUB_OUTPUT}"
+            else
+              branch="${REF_NAME##*/}"
+              echo "container_tag=branch-${branch}" >> "${GITHUB_OUTPUT}"
+              echo "helm_tag=v0.0.0-${branch}" >> "${GITHUB_OUTPUT}"
+            fi
+            ;;
+          *)
+            echo "Unsupported event: ${EVENT_NAME}" >&2
+            exit 1
+            ;;
+        esac
