@@ -134,7 +134,7 @@ jobs:
         done
 
     - name: Create compatibility artifacts
-      uses: ./.github/actions/compatibility
+      uses: matthias-horne/extension-hub/.github/actions/compatibility@main
       with:
         chart-ref: ${{ env.CHART_REPOSITORY }}/${{ env.CHART_NAME }}:${{ steps.tags.outputs.helm_tag }}
         admission-runtime-chart-ref: ${{ env.CHART_REPOSITORY }}/${{ env.ADMISSION_RUNTIME_CHART_NAME }}:${{ steps.tags.outputs.helm_tag }}
