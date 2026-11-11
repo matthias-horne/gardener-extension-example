@@ -109,3 +109,5 @@ jobs:
       with:
         chart-ref: ${{ env.CHART_REPOSITORY }}/${{ env.CHART_NAME }}:${{ steps.tags.outputs.helm_tag }}
         extension-ref: ${{ env.EXTENSION_REPOSITORY }}/${{ env.CHART_NAME }}:${{ steps.tags.outputs.container_tag }}
+        image-repository: ${{ env.IMAGE_NAME }}
+        image-tag: ${{ steps.tags.outputs.container_tag }}

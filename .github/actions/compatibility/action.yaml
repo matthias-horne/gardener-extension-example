@@ -9,21 +9,42 @@ inputs:
   extension-ref:
     description: The ref that this extension's manifest OCI artifact will be pushed to.
     required: true
+  image-repository:
+    description: The extension image repository.
+    required: false
+  image-tag:
+    description: The extension image tag.
+    required: false
 
 runs:
   using: composite
   steps:
-    - name: Prepare extension and compatibility information
+    - name: Patch extension chart ref
+      uses: mikefarah/yq@v4
+      with:
+        cmd: yq e -i '.spec.deployment.extension.helm.ociRepository.ref = "${{ inputs.chart-ref }}"' example/extension.yaml
+
+    - name: Patch manifest annotation
+      uses: mikefarah/yq@v4
+      with:
+        cmd: yq e -i '.metadata.annotations."extension.garden.cloud/manifest" = "${{ inputs.extension-ref }}"' example/extension.yaml
+
+    - name: Patch extension image values
+      if: inputs.image-repository != '' && inputs.image-tag != ''
+      uses: mikefarah/yq@v4
+      with:
+        cmd: yq e -i '(select(.spec.deployment.extension.values.image? != null) | .spec.deployment.extension.values.image.repository = "${{ inputs.image-repository }}" | .spec.deployment.extension.values.image.tag = "${{ inputs.image-tag }}") // .' example/extension.yaml
+
+    - name: Patch runtime cluster image values
+      if: inputs.image-repository != '' && inputs.image-tag != ''
+      uses: mikefarah/yq@v4
+      with:
+        cmd: yq e -i '(select(.spec.deployment.extension.runtimeClusterValues.image? != null) | .spec.deployment.extension.runtimeClusterValues.image.repository = "${{ inputs.image-repository }}" | .spec.deployment.extension.runtimeClusterValues.image.tag = "${{ inputs.image-tag }}") // .' example/extension.yaml
+
+    - name: Prepare compatibility information
       shell: bash
-      env:
-        RAW_CHART_REF: ${{ inputs.chart-ref }}
-        RAW_EXTENSION_REF: ${{ inputs.extension-ref }}
       run: |
-        # write refs into extension.yaml
-        yq eval '
-          .spec.deployment.extension.helm.ociRepository.ref = strenv(RAW_CHART_REF) |
-          .metadata.annotations."extension.garden.cloud/manifest" = strenv(RAW_EXTENSION_REF)
-        ' example/extension.yaml > "${RUNNER_TEMP}/extension.yaml"
+        cp example/extension.yaml "${RUNNER_TEMP}/extension.yaml"
 
         gardener_version="$(awk '$1 == "github.com/gardener/gardener" { print $2 }' go.mod)"
         test -n "${gardener_version}"

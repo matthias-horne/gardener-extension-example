@@ -38,7 +38,7 @@ The image is also tagged `latest` on releases. The chart's `appVersion` and `ima
 
 Pull requests from forks are built and tested, but artifacts are only published for pull requests from branches in this repository because fork pull requests receive a read-only token.
 
-The published `extension.yaml` is generated from [example/extension.yaml](example/extension.yaml), with its Helm chart and manifest references set to the artifacts for the triggering event. [compatibility.yaml](compatibility.yaml) tracks manually maintained `requires` and `supportedFeatures`. The workflow adds the Gardener dependency version from [go.mod](go.mod) as `builtWith."gardener/gardener"` and preserves any `testedWith` information added after compatibility testing. The extension artifact and its YAML file use media type `application/gardener.extension+yaml`; the compatibility artifact and its YAML file use `application/gardener.compatibility+yaml`.
+The published `extension.yaml` is generated from [example/extension.yaml](example/extension.yaml), with its extension chart ref, manifest annotation, and runtime cluster image values set to the artifacts for the triggering event. [compatibility.yaml](compatibility.yaml) tracks manually maintained `requires` and `supportedFeatures`. The workflow adds the Gardener dependency version from [go.mod](go.mod) as `builtWith."gardener/gardener"` and preserves any `testedWith` information added after compatibility testing. The extension artifact and its YAML file use media type `application/gardener.extension+yaml`; the compatibility artifact and its YAML file use `application/gardener.compatibility+yaml`.
 
 ### Download artifacts
 
